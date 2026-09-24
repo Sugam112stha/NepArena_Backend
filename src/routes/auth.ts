@@ -73,7 +73,8 @@ router.get("/:provider", (request, response) => {
 
   const config = getOAuthConfig(provider);
   if (!config) {
-    response.status(503).send(`${provider} authentication is not configured on the server`);
+    const message = `${provider === "discord" ? "Discord" : "Google"} login is not configured. Add the provider credentials to backend/.env.`;
+    response.redirect(`${getClientUrl()}/login?oauthError=${encodeURIComponent(message)}`);
     return;
   }
 
