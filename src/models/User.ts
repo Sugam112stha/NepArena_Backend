@@ -4,7 +4,9 @@ export interface UserDocument extends Document {
   fullName: string;
   username: string;
   email: string;
-  passwordHash: string;
+  passwordHash?: string;
+  authProvider: "local" | "google" | "discord";
+  providerId?: string;
 }
 
 const userSchema = new mongoose.Schema<UserDocument>(
@@ -26,13 +28,24 @@ const userSchema = new mongoose.Schema<UserDocument>(
       lowercase: true,
       maxlength: 254,
     },
-    passwordHash: { type: String, required: true, select: false },
+    passwordHash: { type: String, required: false, select: false },
+    authProvider: {
+      type: String,
+      enum: ["local", "google", "discord"],
+      default: "local",
+      required: true,
+    },
+    providerId: { type: String, required: false },
   },
   { timestamps: true }
 );
 
 userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ username: 1 }, { unique: true });
+userSchema.index(
+  { authProvider: 1, providerId: 1 },
+  { unique: true, partialFilterExpression: { providerId: { $exists: true } } }
+);
 
 export const User: Model<UserDocument> = mongoose.model<UserDocument>(
   "User",
