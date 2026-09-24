@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
+import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 
 const router = Router();
 const passwordMinimumLength = 8;
@@ -21,8 +22,8 @@ const getJwtSecret = () => {
   return secret;
 };
 
-const toPublicUser = (user: { id: string; fullName: string; username: string; email: string }) => ({
-  id: user.id,
+const toPublicUser = (user: { id?: string; _id?: unknown; fullName: string; username: string; email: string }) => ({
+  id: user.id || String(user._id),
   fullName: user.fullName,
   username: user.username,
   email: user.email,
@@ -247,6 +248,21 @@ router.post("/login", async (request, response) => {
   } catch (error) {
     console.error("Login failed", error);
     response.status(500).json({ success: false, message: "Unable to log in right now." });
+  }
+});
+
+router.get("/me", requireAuth, async (request, response) => {
+  try {
+    const user = await User.findById((request as AuthenticatedRequest).userId).lean();
+    if (!user) {
+      response.status(401).json({ success: false, message: "User account no longer exists." });
+      return;
+    }
+
+    response.json({ success: true, user: toPublicUser(user) });
+  } catch (error) {
+    console.error("Session validation failed", error);
+    response.status(500).json({ success: false, message: "Unable to validate your session." });
   }
 });
 
