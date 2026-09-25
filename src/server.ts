@@ -4,6 +4,7 @@ import express from "express";
 import { connectToDatabase } from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import teamRoutes from "./routes/teams.js";
+import notificationRoutes from "./routes/notifications.js";
 
 dotenv.config({ path: new URL("../.env", import.meta.url) });
 
@@ -15,6 +16,7 @@ app.use(cors({ origin: clientUrl, credentials: true }));
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/teams", teamRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/api/health", (_request, response) => {
   response.json({

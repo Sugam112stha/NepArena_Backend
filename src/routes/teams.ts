@@ -3,8 +3,17 @@ import { Types } from "mongoose";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import { Team } from "../models/Team.js";
 import { User } from "../models/User.js";
+import { Notification } from "../models/Notification.js";
 
 const router = Router();
+
+const createNotification = async (userId: string, type: "team_created" | "team_updated" | "team_deleted", message: string) => {
+  try {
+    await Notification.create({ user: userId, type, message });
+  } catch (error) {
+    console.error("Notification creation failed", error);
+  }
+};
 
 router.get("/", requireAuth, async (request, response) => {
   try {
@@ -66,9 +75,34 @@ router.patch("/:teamId", requireAuth, async (request, response) => {
       return;
     }
     response.json({ success: true, team });
+    await createNotification(ownerId, "team_updated", `${team.name} was updated successfully.`);
   } catch (error) {
     console.error("Team update failed", error);
     response.status(500).json({ success: false, message: "Unable to update your team right now." });
+  }
+});
+
+router.delete("/:teamId", requireAuth, async (request, response) => {
+  try {
+    const ownerId = (request as AuthenticatedRequest).userId;
+    const teamIdParam = request.params.teamId;
+    const teamId = typeof teamIdParam === "string" ? teamIdParam : "";
+    if (!ownerId || !Types.ObjectId.isValid(teamId)) {
+      response.status(400).json({ success: false, message: "Invalid team request." });
+      return;
+    }
+
+    const team = await Team.findOneAndDelete({ _id: teamId, owner: ownerId }).lean();
+    if (!team) {
+      response.status(404).json({ success: false, message: "Team not found." });
+      return;
+    }
+
+    await createNotification(ownerId, "team_deleted", `${team.name} was deleted.`);
+    response.json({ success: true, teamId });
+  } catch (error) {
+    console.error("Team deletion failed", error);
+    response.status(500).json({ success: false, message: "Unable to delete your team right now." });
   }
 });
 
@@ -124,6 +158,7 @@ router.post("/", requireAuth, async (request, response) => {
     });
 
     response.status(201).json({ success: true, team: { id: team.id, name: team.name, tag: team.tag, game: team.game, players: team.players } });
+    await createNotification(ownerId, "team_created", `${team.name} was created successfully.`);
   } catch (error) {
     console.error("Team creation failed", error);
     response.status(500).json({ success: false, message: "Unable to create the team right now." });
