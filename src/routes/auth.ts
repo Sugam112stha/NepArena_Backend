@@ -177,6 +177,22 @@ router.get("/:provider/callback", async (request, response) => {
   }
 });
 
+router.get("/users/:username", requireAuth, async (request, response) => {
+  const usernameParam = request.params.username;
+  const username = (typeof usernameParam === "string" ? usernameParam : "").trim().toLowerCase();
+  const user = await User.findOne({ username }).select("fullName username").lean();
+
+  if (!user) {
+    response.status(404).json({ success: false, message: "No registered player found with that username." });
+    return;
+  }
+
+  response.json({
+    success: true,
+    player: { fullName: user.fullName, username: user.username },
+  });
+});
+
 router.post("/signup", async (request, response) => {
   try {
     const { fullName, username, email, password } = request.body as AuthRequest;
@@ -185,7 +201,7 @@ router.post("/signup", async (request, response) => {
 
     if (
       typeof fullName !== "string" || !fullName.trim() ||
-      !normalizedUsername || !/^[a-z0-9_]+$/.test(normalizedUsername) ||
+      !normalizedUsername || !/^(?=.*\d)[a-z0-9_]+$/.test(normalizedUsername) ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
       typeof password !== "string" || password.length < passwordMinimumLength
     ) {
