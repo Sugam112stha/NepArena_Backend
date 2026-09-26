@@ -22,11 +22,21 @@ const getJwtSecret = () => {
   return secret;
 };
 
-const toPublicUser = (user: { id?: string; _id?: unknown; fullName: string; username: string; email: string }) => ({
+const toPublicUser = (user: {
+  id?: string;
+  _id?: unknown;
+  fullName: string;
+  username: string;
+  email: string;
+  profilePicture?: string;
+  gameProfiles?: Array<{ game: string; ign: string; uid: string }>;
+}) => ({
   id: user.id || String(user._id),
   fullName: user.fullName,
   username: user.username,
   email: user.email,
+  profilePicture: user.profilePicture || "",
+  gameProfiles: user.gameProfiles || [],
 });
 
 const createToken = (userId: string) =>
@@ -279,6 +289,64 @@ router.get("/me", requireAuth, async (request, response) => {
   } catch (error) {
     console.error("Session validation failed", error);
     response.status(500).json({ success: false, message: "Unable to validate your session." });
+  }
+});
+
+router.patch("/profile", requireAuth, async (request, response) => {
+  try {
+    const userId = (request as AuthenticatedRequest).userId;
+    const { fullName, profilePicture, gameProfiles } = request.body as {
+      fullName?: unknown;
+      profilePicture?: unknown;
+      gameProfiles?: unknown;
+    };
+
+    if (!userId || typeof fullName !== "string" || !fullName.trim() || fullName.trim().length > 80) {
+      response.status(400).json({ success: false, message: "Enter a valid display name (1 to 80 characters)." });
+      return;
+    }
+    if (profilePicture !== undefined && typeof profilePicture !== "string") {
+      response.status(400).json({ success: false, message: "Invalid profile picture." });
+      return;
+    }
+    if (typeof profilePicture === "string" && profilePicture.length > 2_100_000) {
+      response.status(400).json({ success: false, message: "Profile picture is too large. Choose an image under 1.5 MB." });
+      return;
+    }
+
+    const allowedGames = new Set(["Free Fire", "PUBG Mobile", "Mobile Legends", "eFootball"]);
+    if (gameProfiles !== undefined && (!Array.isArray(gameProfiles) || gameProfiles.some((profile) =>
+      !profile || typeof profile.game !== "string" || !allowedGames.has(profile.game) ||
+      typeof profile.ign !== "string" || typeof profile.uid !== "string"
+    ))) {
+      response.status(400).json({ success: false, message: "Invalid game identity details." });
+      return;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        $set: {
+          fullName: fullName.trim(),
+          ...(typeof profilePicture === "string" ? { profilePicture } : {}),
+          ...(Array.isArray(gameProfiles) ? { gameProfiles: gameProfiles.map((profile) => ({
+            game: profile.game,
+            ign: profile.ign.trim(),
+            uid: profile.uid.trim(),
+          })) } : {}),
+        },
+      },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!user) {
+      response.status(404).json({ success: false, message: "User account not found." });
+      return;
+    }
+    response.json({ success: true, user: toPublicUser(user) });
+  } catch (error) {
+    console.error("Profile update failed", error);
+    response.status(500).json({ success: false, message: "Unable to update your profile right now." });
   }
 });
 

@@ -4,6 +4,8 @@ export interface UserDocument extends Document {
   fullName: string;
   username: string;
   email: string;
+  profilePicture?: string;
+  gameProfiles: Array<{ game: string; ign: string; uid: string }>;
   passwordHash?: string;
   authProvider: "local" | "google" | "discord";
   providerId?: string;
@@ -27,6 +29,17 @@ const userSchema = new mongoose.Schema<UserDocument>(
       trim: true,
       lowercase: true,
       maxlength: 254,
+    },
+    profilePicture: { type: String, maxlength: 2_100_000 },
+    gameProfiles: {
+      type: [
+        {
+          game: { type: String, required: true },
+          ign: { type: String, trim: true, maxlength: 50 },
+          uid: { type: String, trim: true, maxlength: 80 },
+        },
+      ],
+      default: [],
     },
     passwordHash: { type: String, required: false, select: false },
     authProvider: {

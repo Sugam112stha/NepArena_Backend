@@ -13,7 +13,7 @@ const port = Number(process.env.PORT) || 5000;
 const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
 
 app.use(cors({ origin: clientUrl, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: "3mb" }));
 app.use("/api/auth", authRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/notifications", notificationRoutes);
