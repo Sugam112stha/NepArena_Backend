@@ -69,7 +69,7 @@ router.patch("/:teamId", requireAuth, async (request, response) => {
       }));
     }
 
-    const team = await Team.findOneAndUpdate({ _id: teamId, owner: ownerId }, update, { new: true, runValidators: true }).lean();
+    const team = await Team.findOneAndUpdate({ _id: teamId, owner: ownerId }, update, { returnDocument: "after", runValidators: true }).lean();
     if (!team) {
       response.status(404).json({ success: false, message: "Team not found." });
       return;
