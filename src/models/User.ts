@@ -34,7 +34,7 @@ const userSchema = new mongoose.Schema<UserDocument>(
     gameProfiles: {
       type: [
         {
-          game: { type: String, required: true },
+          game: { type: String, required: true, enum: ["Free Fire"] },
           ign: { type: String, trim: true, maxlength: 50 },
           uid: { type: String, trim: true, maxlength: 80 },
         },

@@ -467,12 +467,7 @@ router.patch(
         return;
       }
 
-      const allowedGames = new Set([
-        "Free Fire",
-        "PUBG Mobile",
-        "Mobile Legends",
-        "eFootball",
-      ]);
+      const allowedGames = new Set(["Free Fire"]);
 
       if (
         gameProfiles !== undefined &&

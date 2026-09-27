@@ -18,7 +18,7 @@ const createNotification = async (userId: string, type: "team_created" | "team_u
 router.get("/", requireAuth, async (request, response) => {
   try {
     const ownerId = (request as AuthenticatedRequest).userId;
-    const teams = await Team.find({ owner: ownerId }).sort({ createdAt: -1 }).lean();
+    const teams = await Team.find({ owner: ownerId, game: "Free Fire" }).sort({ createdAt: -1 }).lean();
     response.json({ success: true, teams });
   } catch (error) {
     console.error("Team lookup failed", error);
@@ -118,7 +118,7 @@ router.post("/", requireAuth, async (request, response) => {
       players?: unknown;
     };
 
-    if (!ownerId || !Types.ObjectId.isValid(ownerId) || typeof name !== "string" || !name.trim() || typeof tag !== "string" || !tag.trim() || typeof game !== "string" || !game.trim() || !Array.isArray(players) || players.length === 0 || players.length > 6) {
+    if (!ownerId || !Types.ObjectId.isValid(ownerId) || typeof name !== "string" || !name.trim() || typeof tag !== "string" || !tag.trim() || game !== "Free Fire" || !Array.isArray(players) || players.length === 0 || players.length > 6) {
       response.status(400).json({ success: false, message: "Complete team and roster details are required." });
       return;
     }
@@ -151,7 +151,7 @@ router.post("/", requireAuth, async (request, response) => {
       owner: ownerId,
       name: name.trim(),
       tag: tag.trim().toUpperCase(),
-      game: game.trim(),
+      game: "Free Fire",
       slogan: typeof slogan === "string" ? slogan.trim() : undefined,
       logo: typeof logo === "string" ? logo : undefined,
       players: teamPlayers,

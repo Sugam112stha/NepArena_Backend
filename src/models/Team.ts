@@ -22,7 +22,7 @@ const teamSchema = new mongoose.Schema<TeamDocument>(
     owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     name: { type: String, required: true, trim: true, maxlength: 60 },
     tag: { type: String, required: true, trim: true, uppercase: true, maxlength: 4 },
-    game: { type: String, required: true, trim: true },
+    game: { type: String, required: true, trim: true, enum: ["Free Fire"] },
     slogan: { type: String, trim: true, maxlength: 160 },
     logo: { type: String, maxlength: 2_000_000 },
     players: [

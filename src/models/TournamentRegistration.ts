@@ -16,7 +16,7 @@ const tournamentRegistrationSchema = new mongoose.Schema<TournamentRegistrationD
     team: { type: mongoose.Schema.Types.ObjectId, ref: "Team", required: true },
     tournamentId: { type: String, required: true, trim: true },
     tournamentTitle: { type: String, required: true, trim: true, maxlength: 120 },
-    game: { type: String, required: true, trim: true },
+    game: { type: String, required: true, trim: true, enum: ["Free Fire"] },
     group: { type: String, required: true, enum: ["A", "B", "C", "D"] },
     round: { type: String, required: true, default: "Round 1" },
   },

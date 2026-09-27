@@ -31,7 +31,7 @@ router.post("/", requireAuth, async (request, response) => {
       teamId?: unknown;
     };
 
-    if (!ownerId || !Types.ObjectId.isValid(ownerId) || typeof tournamentId !== "string" || !tournamentId.trim() || typeof tournamentTitle !== "string" || !tournamentTitle.trim() || typeof game !== "string" || !game.trim() || typeof teamId !== "string" || !Types.ObjectId.isValid(teamId)) {
+    if (!ownerId || !Types.ObjectId.isValid(ownerId) || typeof tournamentId !== "string" || !tournamentId.trim() || typeof tournamentTitle !== "string" || !tournamentTitle.trim() || game !== "Free Fire" || typeof teamId !== "string" || !Types.ObjectId.isValid(teamId)) {
       response.status(400).json({ success: false, message: "Choose a tournament and one of your teams to register." });
       return;
     }
@@ -41,8 +41,8 @@ router.post("/", requireAuth, async (request, response) => {
       response.status(404).json({ success: false, message: "That team was not found in your account." });
       return;
     }
-    if (team.game.trim().toLowerCase() !== game.trim().toLowerCase()) {
-      response.status(400).json({ success: false, message: "Your team must be registered for the same game as the tournament." });
+    if (team.game !== "Free Fire") {
+      response.status(400).json({ success: false, message: "Only Free Fire teams can be registered." });
       return;
     }
 
@@ -64,7 +64,7 @@ router.post("/", requireAuth, async (request, response) => {
       team: team._id,
       tournamentId: tournamentId.trim(),
       tournamentTitle: tournamentTitle.trim(),
-      game: game.trim(),
+      game: "Free Fire",
       group: assignedGroup,
       round: "Round 1",
     });
