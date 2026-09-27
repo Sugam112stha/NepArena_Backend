@@ -5,6 +5,7 @@ import { connectToDatabase } from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import teamRoutes from "./routes/teams.js";
 import notificationRoutes from "./routes/notifications.js";
+import registrationRoutes from "./routes/registrations.js";
 
 dotenv.config({ path: new URL("../.env", import.meta.url) });
 
@@ -17,6 +18,7 @@ app.use(express.json({ limit: "3mb" }));
 app.use("/api/auth", authRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/registrations", registrationRoutes);
 
 app.get("/api/health", (_request, response) => {
   response.json({
