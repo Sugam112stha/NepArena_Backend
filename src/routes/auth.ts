@@ -224,6 +224,32 @@ router.get(
   }
 );
 
+router.get(
+  "/users/id/:playerId",
+  requireAuth,
+  async (request, response) => {
+    try {
+      const playerIdParam = request.params.playerId;
+      const playerId = typeof playerIdParam === "string" ? playerIdParam.trim() : "";
+      if (!/^\d{10}$/.test(playerId)) {
+        response.status(400).json({ success: false, message: "Enter a valid 10-digit Player ID." });
+        return;
+      }
+
+      const player = await User.findOne({ playerId }).select("fullName username playerId").lean();
+      if (!player) {
+        response.status(404).json({ success: false, message: "No NepArena player found with that Player ID." });
+        return;
+      }
+
+      response.json({ success: true, player });
+    } catch (error) {
+      console.error("Player ID lookup failed", error);
+      response.status(500).json({ success: false, message: "Unable to verify that Player ID right now." });
+    }
+  }
+);
+
 
 /* =========================================================
    SIGN UP

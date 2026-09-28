@@ -49,10 +49,10 @@ router.patch("/:teamId", requireAuth, async (request, response) => {
     if (typeof slogan === "string") update.slogan = slogan.trim();
 
     if (Array.isArray(players)) {
-      const requestedPlayers = players as Array<{ username?: unknown; inGameId?: unknown; role?: unknown }>;
+      const requestedPlayers = players as Array<{ username?: unknown; ign?: unknown; inGameId?: unknown; role?: unknown }>;
       const usernames = requestedPlayers.map((player) => typeof player.username === "string" ? player.username.trim().toLowerCase() : "");
-      if (requestedPlayers.length === 0 || requestedPlayers.length > 6 || usernames.some((username) => !username) || new Set(usernames).size !== usernames.length || requestedPlayers.some((player) => typeof player.inGameId !== "string" || !player.inGameId.trim())) {
-        response.status(400).json({ success: false, message: "Each player needs a unique username and in-game ID." });
+      if (requestedPlayers.length === 0 || requestedPlayers.length > 6 || usernames.some((username) => !username) || new Set(usernames).size !== usernames.length || requestedPlayers.some((player) => typeof player.inGameId !== "string" || !player.inGameId.trim() || (player.ign !== undefined && typeof player.ign !== "string"))) {
+        response.status(400).json({ success: false, message: "Each player needs a unique username and Free Fire UID." });
         return;
       }
       const users = await User.find({ username: { $in: usernames } }).select("username");
@@ -64,6 +64,7 @@ router.patch("/:teamId", requireAuth, async (request, response) => {
       update.players = requestedPlayers.map((player, index) => ({
         user: userByUsername.get(usernames[index])!._id,
         username: usernames[index],
+        ...(typeof player.ign === "string" ? { ign: player.ign.trim() } : {}),
         inGameId: String(player.inGameId).trim(),
         role: typeof player.role === "string" ? player.role : "Player",
       }));
@@ -123,25 +124,31 @@ router.post("/", requireAuth, async (request, response) => {
       return;
     }
 
-    const requestedPlayers = players as Array<{ username?: unknown; inGameId?: unknown; role?: unknown }>;
-    const usernames = requestedPlayers.map((player) => typeof player.username === "string" ? player.username.trim().toLowerCase() : "");
-    if (usernames.some((username) => !username) || new Set(usernames).size !== usernames.length || requestedPlayers.some((player) => typeof player.inGameId !== "string" || !player.inGameId.trim())) {
-      response.status(400).json({ success: false, message: "Each player needs a unique username and in-game ID." });
+    const requestedPlayers = players as Array<{ playerId?: unknown; ign?: unknown; inGameId?: unknown; role?: unknown }>;
+    const playerIds = requestedPlayers.map((player) => typeof player.playerId === "string" ? player.playerId.trim() : "");
+    if (playerIds.some((playerId) => !/^\d{10}$/.test(playerId)) || new Set(playerIds).size !== playerIds.length || requestedPlayers.some((player) => typeof player.ign !== "string" || !player.ign.trim() || typeof player.inGameId !== "string" || !player.inGameId.trim())) {
+      response.status(400).json({ success: false, message: "Each player needs a unique 10-digit Player ID, Free Fire IGN, and UID." });
       return;
     }
 
-    const users = await User.find({ username: { $in: usernames } }).select("username");
-    if (users.length !== usernames.length) {
-      response.status(400).json({ success: false, message: "One or more invited usernames do not exist." });
+    const users = await User.find({ playerId: { $in: playerIds } }).select("playerId username");
+    if (users.length !== playerIds.length) {
+      response.status(400).json({ success: false, message: "One or more Player IDs do not belong to a NepArena user." });
       return;
     }
 
-    const userByUsername = new Map(users.map((user) => [user.username, user]));
+    if (!users.some((user) => String(user._id) === ownerId)) {
+      response.status(400).json({ success: false, message: "Your own account must be included as the team captain." });
+      return;
+    }
+
+    const userByPlayerId = new Map(users.map((user) => [user.playerId, user]));
     const teamPlayers = requestedPlayers.map((player, index) => {
-      const username = usernames[index];
+      const invitedUser = userByPlayerId.get(playerIds[index])!;
       return {
-        user: userByUsername.get(username)!._id,
-        username,
+        user: invitedUser._id,
+        username: invitedUser.username,
+        ign: String(player.ign).trim(),
         inGameId: String(player.inGameId).trim(),
         role: typeof player.role === "string" ? player.role : "Player",
       };
