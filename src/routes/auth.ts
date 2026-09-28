@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
+import { createUserWithPlayerId } from "../services/playerId.js";
 import {
   requireAuth,
   type AuthenticatedRequest,
@@ -36,6 +37,7 @@ const getJwtSecret = () => {
 const toPublicUser = (user: {
   id?: string;
   _id?: unknown;
+  playerId: string;
   fullName: string;
   username: string;
   email: string;
@@ -47,6 +49,7 @@ const toPublicUser = (user: {
   }>;
 }) => ({
   id: user.id || String(user._id),
+  playerId: user.playerId,
   fullName: user.fullName,
   username: user.username,
   email: user.email,
@@ -301,7 +304,7 @@ router.post(
       const passwordHash =
         await bcrypt.hash(password, 12);
 
-      const user = await User.create({
+      const user = await createUserWithPlayerId({
         fullName: fullName.trim(),
         username: normalizedUsername,
         email: normalizedEmail,
@@ -859,7 +862,7 @@ router.get(
         }
 
         user =
-          await User.create({
+          await createUserWithPlayerId({
             fullName:
               profile.name ||
               profile.global_name ||

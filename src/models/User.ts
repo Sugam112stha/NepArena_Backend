@@ -1,6 +1,7 @@
 import mongoose, { Document, Model } from "mongoose";
 
 export interface UserDocument extends Document {
+  playerId: string;
   fullName: string;
   username: string;
   email: string;
@@ -13,6 +14,7 @@ export interface UserDocument extends Document {
 
 const userSchema = new mongoose.Schema<UserDocument>(
   {
+    playerId: { type: String, match: /^\d{10}$/ },
     fullName: { type: String, required: true, trim: true, maxlength: 80 },
     username: {
       type: String,
@@ -55,6 +57,7 @@ const userSchema = new mongoose.Schema<UserDocument>(
 
 userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ username: 1 }, { unique: true });
+userSchema.index({ playerId: 1 }, { unique: true, sparse: true });
 userSchema.index(
   { authProvider: 1, providerId: 1 },
   { unique: true, partialFilterExpression: { providerId: { $exists: true } } }

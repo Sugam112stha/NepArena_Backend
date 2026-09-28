@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.js";
 import teamRoutes from "./routes/teams.js";
 import notificationRoutes from "./routes/notifications.js";
 import registrationRoutes from "./routes/registrations.js";
+import { ensureAllPlayerIds } from "./services/playerId.js";
 
 dotenv.config({ path: new URL("../.env", import.meta.url) });
 
@@ -29,6 +30,7 @@ app.get("/api/health", (_request, response) => {
 
 const startServer = async () => {
   await connectToDatabase();
+  await ensureAllPlayerIds();
 
   app.listen(port, () => {
     console.log(`NepArena API listening on http://localhost:${port}`);
