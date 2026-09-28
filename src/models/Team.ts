@@ -39,4 +39,6 @@ const teamSchema = new mongoose.Schema<TeamDocument>(
   { timestamps: true }
 );
 
+teamSchema.index({ "players.user": 1 }, { unique: true });
+
 export const Team: Model<TeamDocument> = mongoose.model<TeamDocument>("Team", teamSchema);

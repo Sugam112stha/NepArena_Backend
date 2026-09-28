@@ -18,11 +18,28 @@ const createNotification = async (userId: string, type: "team_created" | "team_u
 router.get("/", requireAuth, async (request, response) => {
   try {
     const ownerId = (request as AuthenticatedRequest).userId;
-    const teams = await Team.find({ owner: ownerId, game: "Free Fire" }).sort({ createdAt: -1 }).lean();
+    const teams = await Team.find({
+      game: "Free Fire",
+      $or: [{ owner: ownerId }, { "players.user": ownerId }],
+    }).sort({ createdAt: -1 }).lean();
     response.json({ success: true, teams });
   } catch (error) {
     console.error("Team lookup failed", error);
     response.status(500).json({ success: false, message: "Unable to load your teams right now." });
+  }
+});
+
+router.get("/mine", requireAuth, async (request, response) => {
+  try {
+    const userId = (request as AuthenticatedRequest).userId;
+    const team = await Team.findOne({
+      game: "Free Fire",
+      $or: [{ owner: userId }, { "players.user": userId }],
+    }).sort({ createdAt: -1 }).lean();
+    response.json({ success: true, team: team || null });
+  } catch (error) {
+    console.error("My team lookup failed", error);
+    response.status(500).json({ success: false, message: "Unable to load your team right now." });
   }
 });
 
@@ -58,6 +75,12 @@ router.patch("/:teamId", requireAuth, async (request, response) => {
       const users = await User.find({ username: { $in: usernames } }).select("username");
       if (users.length !== usernames.length) {
         response.status(400).json({ success: false, message: "One or more invited usernames do not exist." });
+        return;
+      }
+      const memberIds = users.map((user) => user._id);
+      const anotherTeam = await Team.exists({ _id: { $ne: teamId }, "players.user": { $in: memberIds } });
+      if (anotherTeam) {
+        response.status(409).json({ success: false, message: "A player can belong to only one team. Remove players from their current team before adding them here." });
         return;
       }
       const userByUsername = new Map(users.map((user) => [user.username, user]));
@@ -137,6 +160,13 @@ router.post("/", requireAuth, async (request, response) => {
       return;
     }
 
+    const memberIds = users.map((user) => user._id);
+    const existingMembership = await Team.exists({ "players.user": { $in: memberIds } });
+    if (existingMembership) {
+      response.status(409).json({ success: false, message: "A player in this roster already belongs to a team. Each player can join only one team." });
+      return;
+    }
+
     if (!users.some((user) => String(user._id) === ownerId)) {
       response.status(400).json({ success: false, message: "Your own account must be included as the team captain." });
       return;
@@ -167,6 +197,10 @@ router.post("/", requireAuth, async (request, response) => {
     response.status(201).json({ success: true, team: { id: team.id, name: team.name, tag: team.tag, game: team.game, players: team.players } });
     await createNotification(ownerId, "team_created", `${team.name} was created successfully.`);
   } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === 11000) {
+      response.status(409).json({ success: false, message: "A player in this roster already belongs to another team." });
+      return;
+    }
     console.error("Team creation failed", error);
     response.status(500).json({ success: false, message: "Unable to create the team right now." });
   }
