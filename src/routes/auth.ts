@@ -908,11 +908,11 @@ router.get(
       /* Link provider to an existing account */
 
       else if (!user.providerId) {
-        user.authProvider =
-          provider;
+        user.authProvider = provider;
+        user.providerId = providerId;
 
-        user.providerId =
-          providerId;
+        // NepArena is Free Fire only
+        user.gameProfiles = [];
 
         await user.save();
       }
