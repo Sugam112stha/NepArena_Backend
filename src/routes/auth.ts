@@ -118,9 +118,9 @@ const getOAuthConfig = (
 const callbackUrl = (
   provider: "google" | "discord"
 ) =>
-  `${
+  `${(
     process.env.API_URL || "http://localhost:5001"
-  }/api/auth/${provider}/callback`;
+  ).replace(/\/+$/, "")}/api/auth/${provider}/callback`;
 
 
 /* =========================================================
@@ -781,18 +781,24 @@ router.get(
           }
         );
 
-      const tokenData =
-        (await tokenResponse.json()) as {
-          access_token?: string;
-        };
+      const tokenResponseBody = await tokenResponse.text();
+      let tokenData: {
+        access_token?: string;
+        error?: string;
+        error_description?: string;
+      } = {};
+      try {
+        tokenData = JSON.parse(tokenResponseBody) as typeof tokenData;
+      } catch {
+        tokenData = {};
+      }
 
       if (
         !tokenResponse.ok ||
         !tokenData.access_token
       ) {
-        throw new Error(
-          "OAuth token exchange failed"
-        );
+        const rejection = tokenData.error_description || tokenData.error || `HTTP ${tokenResponse.status}`;
+        throw new Error(`OAuth token exchange failed: ${rejection}`);
       }
 
       /* Get provider profile */
@@ -944,10 +950,13 @@ router.get(
         error
       );
 
+      const errorMessage = error instanceof Error
+        ? error.message
+        : "Social login could not be completed.";
       response.redirect(
         `${
           getClientUrl()
-        }/login?oauthError=Social%20login%20could%20not%20be%20completed`
+        }/login?oauthError=${encodeURIComponent(errorMessage)}`
       );
     }
   }
