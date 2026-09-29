@@ -35,7 +35,7 @@ router.get("/mine", requireAuth, async (request, response) => {
     const team = await Team.findOne({
       game: "Free Fire",
       $or: [{ owner: userId }, { "players.user": userId }],
-    }).sort({ createdAt: -1 }).lean();
+    }).sort({ createdAt: -1 }).populate("players.user", "playerId").lean();
     response.json({ success: true, team: team || null });
   } catch (error) {
     console.error("My team lookup failed", error);
@@ -103,6 +103,97 @@ router.patch("/:teamId", requireAuth, async (request, response) => {
   } catch (error) {
     console.error("Team update failed", error);
     response.status(500).json({ success: false, message: "Unable to update your team right now." });
+  }
+});
+
+router.delete("/:teamId/members/me", requireAuth, async (request, response) => {
+  try {
+    const userId = (request as AuthenticatedRequest).userId;
+    const teamIdParam = request.params.teamId;
+    const teamId = typeof teamIdParam === "string" ? teamIdParam : "";
+    if (!userId || !Types.ObjectId.isValid(teamId)) {
+      response.status(400).json({ success: false, message: "Invalid team request." });
+      return;
+    }
+
+    const team = await Team.findOne({ _id: teamId, "players.user": userId }).lean();
+    if (!team) {
+      response.status(404).json({ success: false, message: "You are not a member of this team." });
+      return;
+    }
+
+    const remainingPlayers = team.players.filter((player) => String(player.user) !== userId);
+    if (remainingPlayers.length === 0) {
+      await Team.findOneAndDelete({ _id: teamId, "players.user": userId });
+      response.json({ success: true, teamDeleted: true, message: "You left the team. The empty team was closed." });
+      return;
+    }
+
+    const update: { players: typeof remainingPlayers; owner?: Types.ObjectId } = { players: remainingPlayers };
+    if (String(team.owner) === userId) {
+      update.owner = remainingPlayers[0].user;
+      remainingPlayers[0].role = "Captain";
+    }
+
+    const updatedTeam = await Team.findOneAndUpdate(
+      { _id: teamId, "players.user": userId },
+      { $set: update },
+      { returnDocument: "after", runValidators: true }
+    ).lean();
+    if (!updatedTeam) {
+      response.status(409).json({ success: false, message: "Team membership changed. Refresh and try again." });
+      return;
+    }
+
+    response.json({ success: true, team: updatedTeam, message: String(team.owner) === userId ? "You left the team and leadership was transferred." : "You left the team." });
+  } catch (error) {
+    console.error("Team leave failed", error);
+    response.status(500).json({ success: false, message: "Unable to leave the team right now." });
+  }
+});
+
+router.delete("/:teamId/members/:playerId", requireAuth, async (request, response) => {
+  try {
+    const ownerId = (request as AuthenticatedRequest).userId;
+    const teamIdParam = request.params.teamId;
+    const playerIdParam = request.params.playerId;
+    const teamId = typeof teamIdParam === "string" ? teamIdParam : "";
+    const playerId = typeof playerIdParam === "string" ? playerIdParam.trim() : "";
+    if (!ownerId || !Types.ObjectId.isValid(teamId) || !/^\d{10}$/.test(playerId)) {
+      response.status(400).json({ success: false, message: "Invalid team or player ID." });
+      return;
+    }
+
+    const team = await Team.findOne({ _id: teamId, owner: ownerId }).lean();
+    if (!team) {
+      response.status(403).json({ success: false, message: "Only the team leader can kick players." });
+      return;
+    }
+
+    const targetUser = await User.findOne({ playerId }).select("_id username").lean();
+    if (!targetUser) {
+      response.status(404).json({ success: false, message: "Player not found." });
+      return;
+    }
+    if (String(targetUser._id) === ownerId) {
+      response.status(400).json({ success: false, message: "Use Leave Team to leave your own team." });
+      return;
+    }
+
+    const updatedTeam = await Team.findOneAndUpdate(
+      { _id: teamId, owner: ownerId, "players.user": targetUser._id },
+      { $pull: { players: { user: targetUser._id } } },
+      { returnDocument: "after", runValidators: true }
+    ).lean();
+    if (!updatedTeam) {
+      response.status(404).json({ success: false, message: "That player is not a member of this team." });
+      return;
+    }
+
+    response.json({ success: true, team: updatedTeam, message: `${targetUser.username} was removed from the team.` });
+  } catch (error) {
+    console.error("Team member removal failed", error);
+    response.status(500).json({ success: false, message: "Unable to remove that player right now." });
   }
 });
 

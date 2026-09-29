@@ -928,21 +928,12 @@ router.get(
       const token =
         createToken(user.id);
 
-      const userData =
-        encodeURIComponent(
-          JSON.stringify(
-            toPublicUser(user)
-          )
-        );
-
       /* Send user back to frontend */
 
       response.redirect(
         `${
           getClientUrl()
-        }/auth/callback?token=${encodeURIComponent(
-          token
-        )}&user=${userData}`
+        }/auth/callback#token=${encodeURIComponent(token)}`
       );
     } catch (error) {
       console.error(
