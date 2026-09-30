@@ -15,6 +15,14 @@ const createNotification = async (userId: string, type: "team_created" | "team_u
   }
 };
 
+const createInviteNotification = async (userId: string, teamId: string, message: string) => {
+  try {
+    await Notification.create({ user: userId, team: teamId, type: "team_invite", message });
+  } catch (error) {
+    console.error("Team invitation notification failed", error);
+  }
+};
+
 router.get("/", requireAuth, async (request, response) => {
   try {
     const ownerId = (request as AuthenticatedRequest).userId;
@@ -35,11 +43,172 @@ router.get("/mine", requireAuth, async (request, response) => {
     const team = await Team.findOne({
       game: "Free Fire",
       $or: [{ owner: userId }, { "players.user": userId }],
-    }).sort({ createdAt: -1 }).populate("players.user", "playerId").lean();
+    }).sort({ createdAt: -1 }).populate("players.user", "playerId").select("owner name tag game slogan logo players pendingInvites").lean();
     response.json({ success: true, team: team || null });
   } catch (error) {
     console.error("My team lookup failed", error);
     response.status(500).json({ success: false, message: "Unable to load your team right now." });
+  }
+});
+
+router.post("/:teamId/invitations/:notificationId/respond", requireAuth, async (request, response) => {
+  try {
+    const userId = (request as AuthenticatedRequest).userId;
+    const { decision } = request.body as { decision?: unknown };
+    const teamIdParam = request.params.teamId;
+    const notificationIdParam = request.params.notificationId;
+    const teamId = typeof teamIdParam === "string" ? teamIdParam : "";
+    const notificationId = typeof notificationIdParam === "string" ? notificationIdParam : "";
+
+    if (!userId || !Types.ObjectId.isValid(teamId) || !Types.ObjectId.isValid(notificationId) || (decision !== "accept" && decision !== "reject")) {
+      response.status(400).json({ success: false, message: "Invalid invitation response." });
+      return;
+    }
+
+    const inviteNotification = await Notification.findOne({
+      _id: notificationId,
+      user: userId,
+      team: teamId,
+      type: "team_invite",
+    });
+    if (!inviteNotification) {
+      response.status(404).json({ success: false, message: "Invitation not found or already handled." });
+      return;
+    }
+
+    if (decision === "reject") {
+      const team = await Team.findOneAndUpdate(
+        { _id: teamId, "pendingInvites.user": userId },
+        { $pull: { pendingInvites: { user: userId } } },
+        { returnDocument: "after" }
+      ).lean();
+      if (!team) {
+        await inviteNotification.deleteOne();
+        response.status(404).json({ success: false, message: "This team invitation is no longer active." });
+        return;
+      }
+      await Notification.deleteMany({ user: userId, team: teamId, type: "team_invite" });
+      response.json({ success: true, decision: "reject", message: "Team invitation declined." });
+      return;
+    }
+
+    const team = await Team.findOne({ _id: teamId, "pendingInvites.user": userId });
+    if (!team) {
+      await Notification.deleteMany({ user: userId, team: teamId, type: "team_invite" });
+      response.status(404).json({ success: false, message: "This team invitation is no longer active." });
+      return;
+    }
+    if (team.players.some((player) => String(player.user) === userId)) {
+      response.status(409).json({ success: false, message: "You are already a member of this team." });
+      return;
+    }
+    const otherMembership = await Team.exists({ "players.user": userId });
+    if (otherMembership) {
+      response.status(409).json({ success: false, message: "You already belong to another team. Leave that team before accepting this invitation." });
+      return;
+    }
+    if (team.players.length >= 6) {
+      response.status(409).json({ success: false, message: "This team roster is full." });
+      return;
+    }
+
+    const invite = team.pendingInvites.find((pendingInvite) => String(pendingInvite.user) === userId);
+    if (!invite) {
+      response.status(404).json({ success: false, message: "This team invitation is no longer active." });
+      return;
+    }
+    team.players.push({
+      user: invite.user,
+      username: invite.username,
+      ign: invite.ign,
+      inGameId: invite.inGameId,
+      role: invite.role,
+    });
+    team.pendingInvites = team.pendingInvites.filter((pendingInvite) => String(pendingInvite.user) !== userId);
+    await team.save();
+    await Notification.deleteMany({ user: userId, team: teamId, type: "team_invite" });
+    await createNotification(String(team.owner), "team_updated", `${invite.username} accepted the invitation to ${team.name}.`);
+    response.json({ success: true, decision: "accept", message: `You joined ${team.name}.` });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === 11000) {
+      response.status(409).json({ success: false, message: "You already belong to another team." });
+      return;
+    }
+    console.error("Team invitation response failed", error);
+    response.status(500).json({ success: false, message: "Unable to respond to this invitation right now." });
+  }
+});
+
+router.post("/:teamId/invitations", requireAuth, async (request, response) => {
+  try {
+    const ownerId = (request as AuthenticatedRequest).userId;
+    const teamIdParam = request.params.teamId;
+    const teamId = typeof teamIdParam === "string" ? teamIdParam : "";
+    const { playerId, ign, inGameId, role } = request.body as {
+      playerId?: unknown;
+      ign?: unknown;
+      inGameId?: unknown;
+      role?: unknown;
+    };
+
+    if (!ownerId || !Types.ObjectId.isValid(teamId) || typeof playerId !== "string" || !/^\d{10}$/.test(playerId.trim()) || typeof ign !== "string" || !ign.trim() || typeof inGameId !== "string" || !inGameId.trim()) {
+      response.status(400).json({ success: false, message: "Enter a valid Player ID, Free Fire IGN, and UID." });
+      return;
+    }
+
+    const team = await Team.findOne({ _id: teamId, owner: ownerId });
+    if (!team) {
+      response.status(403).json({ success: false, message: "Only the team leader can invite players." });
+      return;
+    }
+    if (team.players.length + team.pendingInvites.length >= 6) {
+      response.status(409).json({ success: false, message: "The team roster and pending invitations already fill all 6 spots." });
+      return;
+    }
+
+    const invitedUser = await User.findOne({ playerId: playerId.trim() }).select("_id username playerId");
+    if (!invitedUser) {
+      response.status(404).json({ success: false, message: "No NepArena player found with that Player ID." });
+      return;
+    }
+    if (String(invitedUser._id) === ownerId) {
+      response.status(400).json({ success: false, message: "You are already the team leader." });
+      return;
+    }
+    if (team.players.some((player) => String(player.user) === String(invitedUser._id))) {
+      response.status(409).json({ success: false, message: "That player is already on this team." });
+      return;
+    }
+    if (team.pendingInvites.some((invite) => String(invite.user) === String(invitedUser._id))) {
+      response.status(409).json({ success: false, message: "That player already has a pending invitation." });
+      return;
+    }
+    const existingMembership = await Team.exists({ "players.user": invitedUser._id });
+    if (existingMembership) {
+      response.status(409).json({ success: false, message: "That player already belongs to a team." });
+      return;
+    }
+
+    const invitation = {
+      user: invitedUser._id,
+      username: invitedUser.username,
+      ign: ign.trim(),
+      inGameId: inGameId.trim(),
+      role: typeof role === "string" && role.trim() ? role.trim() : "Player",
+      invitedBy: new Types.ObjectId(ownerId),
+      createdAt: new Date(),
+    };
+    team.pendingInvites.push(invitation);
+    await team.save();
+    await createInviteNotification(
+      String(invitedUser._id),
+      team.id,
+      `${team.name} [${team.tag}] invited you to join as ${invitation.role}.`
+    );
+    response.status(201).json({ success: true, message: `Invitation sent to @${invitedUser.username}.` });
+  } catch (error) {
+    console.error("Team invitation creation failed", error);
+    response.status(500).json({ success: false, message: "Unable to send the team invitation right now." });
   }
 });
 
@@ -251,28 +420,41 @@ router.post("/", requireAuth, async (request, response) => {
       return;
     }
 
-    const memberIds = users.map((user) => user._id);
-    const existingMembership = await Team.exists({ "players.user": { $in: memberIds } });
-    if (existingMembership) {
-      response.status(409).json({ success: false, message: "A player in this roster already belongs to a team. Each player can join only one team." });
-      return;
-    }
-
-    if (!users.some((user) => String(user._id) === ownerId)) {
+    const inviter = users.find((user) => String(user._id) === ownerId);
+    if (!inviter) {
       response.status(400).json({ success: false, message: "Your own account must be included as the team captain." });
       return;
     }
 
+    const inviteeIds = users.filter((user) => String(user._id) !== ownerId).map((user) => user._id);
+    const existingMembership = await Team.exists({ "players.user": { $in: inviteeIds } });
+    if (existingMembership) {
+      response.status(409).json({ success: false, message: "A player you invited already belongs to a team and cannot receive another team invitation." });
+      return;
+    }
+
     const userByPlayerId = new Map(users.map((user) => [user.playerId, user]));
-    const teamPlayers = requestedPlayers.map((player, index) => {
+    const captainInputIndex = playerIds.findIndex((playerId) => userByPlayerId.get(playerId)?._id.toString() === ownerId);
+    const captainInput = requestedPlayers[captainInputIndex];
+    const teamPlayers = [{
+      user: inviter._id,
+      username: inviter.username,
+      ign: String(captainInput.ign).trim(),
+      inGameId: String(captainInput.inGameId).trim(),
+      role: "Captain",
+    }];
+    const pendingInvites = requestedPlayers.flatMap((player, index) => {
       const invitedUser = userByPlayerId.get(playerIds[index])!;
-      return {
+      if (String(invitedUser._id) === ownerId) return [];
+      return [{
         user: invitedUser._id,
         username: invitedUser.username,
         ign: String(player.ign).trim(),
         inGameId: String(player.inGameId).trim(),
         role: typeof player.role === "string" ? player.role : "Player",
-      };
+        invitedBy: inviter._id,
+        createdAt: new Date(),
+      }];
     });
 
     const team = await Team.create({
@@ -283,10 +465,16 @@ router.post("/", requireAuth, async (request, response) => {
       slogan: typeof slogan === "string" ? slogan.trim() : undefined,
       logo: typeof logo === "string" ? logo : undefined,
       players: teamPlayers,
+      pendingInvites,
     });
 
     response.status(201).json({ success: true, team: { id: team.id, name: team.name, tag: team.tag, game: team.game, players: team.players } });
     await createNotification(ownerId, "team_created", `${team.name} was created successfully.`);
+    await Promise.all(pendingInvites.map((invite) => createInviteNotification(
+      String(invite.user),
+      team.id,
+      `${inviter.username} invited you to join ${team.name} [${team.tag}].`
+    )));
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === 11000) {
       response.status(409).json({ success: false, message: "A player in this roster already belongs to another team." });

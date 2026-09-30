@@ -8,6 +8,16 @@ export interface TeamPlayer {
   role: string;
 }
 
+export interface PendingTeamInvite {
+  user: Types.ObjectId;
+  username: string;
+  ign: string;
+  inGameId: string;
+  role: string;
+  invitedBy: Types.ObjectId;
+  createdAt: Date;
+}
+
 export interface TeamDocument extends Document {
   owner: Types.ObjectId;
   name: string;
@@ -16,6 +26,7 @@ export interface TeamDocument extends Document {
   slogan?: string;
   logo?: string;
   players: TeamPlayer[];
+  pendingInvites: PendingTeamInvite[];
 }
 
 const teamSchema = new mongoose.Schema<TeamDocument>(
@@ -33,6 +44,17 @@ const teamSchema = new mongoose.Schema<TeamDocument>(
         ign: { type: String, trim: true, maxlength: 50 },
         inGameId: { type: String, required: true, trim: true },
         role: { type: String, required: true },
+      },
+    ],
+    pendingInvites: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        username: { type: String, required: true },
+        ign: { type: String, required: true, trim: true, maxlength: 50 },
+        inGameId: { type: String, required: true, trim: true },
+        role: { type: String, required: true },
+        invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        createdAt: { type: Date, default: Date.now },
       },
     ],
   },
